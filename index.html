@@ -552,11 +552,77 @@ const SCENES = [
     gradient: 'linear-gradient(to bottom, #0c1445 0%, #7c3aed 20%, #f59e0b 45%, #fcd34d 65%, #fef3c7 100%)',
     prompt: 'mountain summit japan victory moment, triumphant golden sunset panorama, spectacular 360 view, achievement atmosphere, beautiful epic dramatic sky with stars, no text, no people'
   },
+
+  // ── ここからファンタジー〜SF ──────────────────────────────────
+  {
+    threshold: 15000,
+    name: '天空の架け橋',
+    emoji: '🌈',
+    msg: '15,000歩！現実と幻想の境界を越えた！',
+    gradient: 'linear-gradient(to bottom, #4c0519 0%, #7c3aed 25%, #a855f7 50%, #e879f9 75%, #fde68a 100%)',
+    prompt: 'magical fantasy sky bridge, crystal rainbow bridge floating above clouds, distant floating castles, ethereal fantasy landscape, magical light, beautiful painterly illustration, no text, no people'
+  },
+  {
+    threshold: 20000,
+    name: '天界の門',
+    emoji: '⚡',
+    msg: '2万歩！神々の領域へ足を踏み入れた伝説の歩者！',
+    gradient: 'linear-gradient(to bottom, #1e0533 0%, #7c3aed 20%, #e9d5ff 50%, #fef9c3 75%, #ffffff 100%)',
+    prompt: 'grand celestial gates of heaven, divine golden light pillars, heavenly realm entrance, transcendent sacred atmosphere, glowing portal, epic fantasy beautiful, no text, no people'
+  },
+  {
+    threshold: 25000,
+    name: '宇宙への出発',
+    emoji: '🚀',
+    msg: '25,000歩！大気圏を突破し宇宙へ！',
+    gradient: 'linear-gradient(to bottom, #000000 0%, #0c1445 30%, #1e3a8a 55%, #0ea5e9 80%, #7dd3fc 100%)',
+    prompt: 'rocket launch breaking through atmosphere into space, earth curving below, stars appearing, SF cinematic, dramatic light, beautiful epic, no text, no people'
+  },
+  {
+    threshold: 30000,
+    name: '月面着陸',
+    emoji: '🌕',
+    msg: '3万歩！月に降り立った英雄！地球が輝いている！',
+    gradient: 'linear-gradient(to bottom, #000000 0%, #0f172a 35%, #1e293b 60%, #94a3b8 85%, #cbd5e1 100%)',
+    prompt: 'moon surface lunar landscape, earth rising in black starry sky, dramatic space scene, SF realistic, footprints in lunar dust, beautiful cinematic, no text, no people'
+  },
+  {
+    threshold: 35000,
+    name: '火星の地平線',
+    emoji: '🔴',
+    msg: '35,000歩！赤い惑星の探索者！',
+    gradient: 'linear-gradient(to bottom, #1c0000 0%, #7f1d1d 25%, #b91c1c 50%, #ef4444 75%, #fca5a5 100%)',
+    prompt: 'mars surface red desert landscape, rusty red terrain, alien sky two moons, SF exploration atmosphere, dust storms distant, beautiful dramatic, no text, no people'
+  },
+  {
+    threshold: 40000,
+    name: '星雲の海',
+    emoji: '🌌',
+    msg: '4万歩！星雲の海を泳ぐ宇宙の旅人！',
+    gradient: 'linear-gradient(to bottom, #000000 0%, #2e1065 25%, #4c1d95 45%, #7c3aed 65%, #ec4899 85%, #f0abfc 100%)',
+    prompt: 'beautiful colorful space nebula, floating in cosmos, purple pink blue gas clouds and stars, SF space art, stunning cosmic landscape, beautiful epic, no text, no people'
+  },
+  {
+    threshold: 45000,
+    name: '異星の都市',
+    emoji: '🛸',
+    msg: '45,000歩！未知の文明を発見！宇宙は広い！',
+    gradient: 'linear-gradient(to bottom, #000000 0%, #0c4a6e 20%, #0369a1 40%, #06b6d4 60%, #67e8f9 80%, #a5f3fc 100%)',
+    prompt: 'futuristic alien city skyline, advanced extraterrestrial civilization, multiple moons, bioluminescent architecture, SF concept art, beautiful epic, no text, no people'
+  },
+  {
+    threshold: 50000,
+    name: '銀河の果て — 伝説到達！',
+    emoji: '💫',
+    msg: '5万歩達成！！銀河の果てに辿り着いた伝説の歩者！あなたはすごい！',
+    gradient: 'linear-gradient(to bottom, #000000 0%, #0f0528 20%, #2e1065 40%, #7c3aed 55%, #f59e0b 72%, #fcd34d 85%, #fef3c7 100%)',
+    prompt: 'edge of the milky way galaxy, infinite stars panorama, cosmic achievement, breathtaking deep space view, gold and purple light, legendary beautiful epic cinematic, no text, no people'
+  },
 ];
 
 // 音が鳴るマイルストーン（step → type）
 function getMilestoneType(step) {
-  if ([3000, 6000, 10000].includes(step)) return 'special';
+  if ([3000, 6000, 10000, 20000, 30000, 50000].includes(step)) return 'special';
   if (step % 500 === 0 && step > 0) return 'milestone';
   if (step % 100 === 0 && step > 0) return 'tick';
   return null;
@@ -736,7 +802,17 @@ function onAuthError(err) {
 async function startApp() {
   showScreen('app');
   requestWakeLock();
-  setSceneByIndex(0);
+
+  // 再ログイン時のリセット
+  // lastFitRaw を -1 に戻して初回取得を必ず「有効」扱いにする
+  lastFitRaw  = -1;
+  sensorDelta = 0;
+
+  // fitBase が残っていれば（再ログイン）そのシーンを復元、初回起動は 0
+  currentSteps = fitBase;
+  const initIdx = getCurrentSceneIdx(fitBase);
+  currentSceneIdx = initIdx;
+  setSceneByIndex(initIdx);
 
   // 加速度センサー開始（iOS以外は即時、iOSはボタン待ち）
   startAccelerometer();
@@ -808,21 +884,36 @@ function onFitData(fitSteps) {
   const timeStr = now.getHours().toString().padStart(2,'0') + ':' +
                   now.getMinutes().toString().padStart(2,'0');
 
-  if (fitSteps === lastFitRaw) {
-    // ── 前回と同じ値 → Fitデータが古い（未反映） ──
+  if (lastFitRaw !== -1 && fitSteps === lastFitRaw) {
+    // ── 前回と同じ値（かつ初回でない） → Fitデータが古い（未反映） ──
     document.getElementById('updateTime').textContent = timeStr + ' (Fit停滞)';
     setSyncBadge('stale');
-    // sensorDelta の積み上げはそのまま継続（何もしない）
+    // sensorDelta の積み上げはそのまま継続
     return;
   }
 
-  // ── 値が変わった → 有効なFitデータ ──
+  const isInitialFetch = (lastFitRaw === -1);
   lastFitRaw  = fitSteps;
   fitBase     = fitSteps;
-  sensorDelta = 0;          // センサー加算分はFit正規値でリセット
+  sensorDelta = 0;
   document.getElementById('updateTime').textContent = timeStr + ' Fit確定';
   setSyncBadge('fit');
-  applySteps(fitBase);
+
+  if (isInitialFetch) {
+    // ── 初回取得（ログイン直後） ──
+    // すでに多く歩いている場合にマイルストーンを全部鳴らさないよう
+    // currentSteps を fitSteps に合わせてからシーンだけ更新する
+    currentSteps = fitSteps;
+    const idx = getCurrentSceneIdx(fitSteps);
+    if (idx !== currentSceneIdx) {
+      currentSceneIdx = idx;
+      setSceneByIndex(idx);
+    }
+    updateDisplay(fitSteps);
+  } else {
+    // ── 通常ポーリング → マイルストーン検出あり ──
+    applySteps(fitBase);
+  }
 }
 
 async function fetchStepsToday() {
@@ -931,19 +1022,26 @@ function getCurrentSceneIdx(steps) {
 function updateDisplay(steps) {
   document.getElementById('stepNumber').textContent = steps.toLocaleString('ja-JP');
 
-  const milestones = [100,200,300,400,500,1000,1500,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000];
-  const nextMs = milestones.find(m => m > steps) || null;
-
-  if (nextMs) {
-    const prevMs = milestones.slice().reverse().find(m => m <= steps) || 0;
-    const pct    = Math.min(100, ((steps - prevMs) / (nextMs - prevMs)) * 100);
-    document.getElementById('progressFill').style.width = pct + '%';
-    document.getElementById('progFrom').textContent = prevMs.toLocaleString('ja-JP');
-    document.getElementById('progTo').textContent   = '次: ' + nextMs.toLocaleString('ja-JP') + '歩';
-  } else {
+  if (steps >= 50000) {
     document.getElementById('progressFill').style.width = '100%';
     document.getElementById('progFrom').textContent = '';
-    document.getElementById('progTo').textContent   = '🏆 目標達成！';
+    document.getElementById('progTo').textContent   = '💫 銀河の果て到達！';
+    return;
+  }
+
+  // 次のシーン閾値（表示用の「次の目標」）
+  const nextScene = SCENES.find(s => s.threshold > steps);
+  const prevScene = [...SCENES].reverse().find(s => s.threshold <= steps);
+
+  if (nextScene && prevScene) {
+    const span = nextScene.threshold - prevScene.threshold;
+    const done = steps - prevScene.threshold;
+    const pct  = Math.min(100, (done / span) * 100);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progFrom').textContent =
+      prevScene.threshold.toLocaleString('ja-JP') + ' ' + prevScene.emoji;
+    document.getElementById('progTo').textContent =
+      nextScene.emoji + ' ' + nextScene.threshold.toLocaleString('ja-JP') + '歩';
   }
 }
 
