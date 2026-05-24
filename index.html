@@ -288,6 +288,45 @@ input[type=text]::placeholder { color: rgba(255,255,255,0.25); }
   100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.2); }
 }
 
+/* ── Sync badge ──────────────────────────── */
+#syncBadge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 12px;
+  letter-spacing: 0.3px;
+  transition: background 0.4s, color 0.4s;
+}
+#syncBadge.sensor {
+  background: rgba(74,222,128,0.18);
+  color: #4ade80;
+}
+#syncBadge.fit {
+  background: rgba(96,165,250,0.18);
+  color: #60a5fa;
+}
+#syncBadge.stale {
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.35);
+}
+
+/* iOS センサー許可ボタン */
+#iosSensorBtn {
+  position: absolute;
+  bottom: 140px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(74,222,128,0.2);
+  border: 1px solid rgba(74,222,128,0.4);
+  color: #4ade80;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  z-index: 6;
+  display: none;
+}
+
 /* ── Loading indicator ───────────────────── */
 #loadingDot {
   position: absolute;
@@ -369,11 +408,16 @@ input[type=text]::placeholder { color: rgba(255,255,255,0.25); }
 
   <!-- Top bar -->
   <div id="topBar">
-    <div id="updateTime">−−:−−</div>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <div id="updateTime">−−:−−</div>
+      <div id="syncBadge" class="stale">待機中</div>
+    </div>
     <button id="settingsBtn" onclick="goToLogin()" title="再ログイン / 設定">⚙</button>
   </div>
 
   <div id="loadingDot"></div>
+  <!-- iOS センサー許可ボタン（必要な場合のみ表示） -->
+  <button id="iosSensorBtn" onclick="requestIosSensor()">📱 センサーを有効化（iOS）</button>
 
   <!-- Bottom panel -->
   <div id="bottomPanel">
@@ -406,7 +450,7 @@ input[type=text]::placeholder { color: rgba(255,255,255,0.25); }
 // ════════════════════════════════════════
 //  定数・設定
 // ════════════════════════════════════════
-const POLL_MS = 30_000; // 30秒ごとにポーリング
+const POLL_MS = 10_000; // 10秒ごとにポーリング
 const FITNESS_SCOPE = 'https://www.googleapis.com/auth/fitness.activity.read';
 
 // マイルストーン定義
@@ -523,14 +567,68 @@ function getMilestoneType(step) {
 // ════════════════════════════════════════
 let tokenClient = null;
 let accessToken  = null;
+
+// ── ハイブリッド歩数管理 ──────────────────
+// fitBase    : 直近の「有効な」Fit歩数（前回と異なる値が来たときのみ更新）
+// lastFitRaw : 前回Fitから受け取った生値（同値チェック用。-1=未受信）
+// sensorDelta: 直近Fit確定以降にセンサーが加算した歩数
+// currentSteps = fitBase + sensorDelta（表示値・マイルストーン判定に使用）
+let fitBase      = 0;
+let lastFitRaw   = -1;
+let sensorDelta  = 0;
 let currentSteps = 0;
-let lastSteps    = -1;     // -1 = 初回
+
 let currentSceneIdx = 0;
-let activeImgLayer  = 'A'; // 'A' or 'B'
+let activeImgLayer  = 'A';
 let pollTimer  = null;
 let wakeLock   = null;
 let audioCtx   = null;
 let celebTimer = null;
+
+// ════════════════════════════════════════
+//  加速度センサー歩数検出
+// ════════════════════════════════════════
+class StepDetector {
+  constructor() {
+    // 重力の指数移動平均（低域フィルタ）
+    this.gravityEst  = 9.81;
+    this.smoothed    = 0;
+    this.aboveThresh = false;
+    this.lastStepAt  = 0;
+    this.ALPHA        = 0.85;  // 低域フィルタ係数（大きいほど慣性強い）
+    this.THRESHOLD    = 1.8;   // 動的加速度のピーク閾値 (m/s²)
+    this.MIN_INTERVAL = 320;   // 最短歩行間隔 ms（速歩で約190bpm相当）
+  }
+
+  process(acc) {
+    const mag = Math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2);
+
+    // 重力成分を指数平均で推定（低域フィルタ）
+    this.gravityEst = this.ALPHA * this.gravityEst + (1 - this.ALPHA) * mag;
+
+    // 動的加速度（重力除去後の絶対値）
+    const dynamic = Math.abs(mag - this.gravityEst);
+
+    // スムージング（二段階フィルタ）
+    this.smoothed = 0.6 * this.smoothed + 0.4 * dynamic;
+
+    const now = Date.now();
+
+    // ピーク検出：閾値を超えたら1歩、最短間隔ガード付き
+    if (this.smoothed > this.THRESHOLD && !this.aboveThresh) {
+      this.aboveThresh = true;
+      if (now - this.lastStepAt > this.MIN_INTERVAL) {
+        this.lastStepAt = now;
+        return true; // ← 1歩検出
+      }
+    } else if (this.smoothed < this.THRESHOLD * 0.55) {
+      this.aboveThresh = false;
+    }
+    return false;
+  }
+}
+
+const detector = new StepDetector();
 
 // 画像プリロードキャッシュ
 const imgCache = {};
@@ -638,10 +736,50 @@ function onAuthError(err) {
 async function startApp() {
   showScreen('app');
   requestWakeLock();
-  setSceneByIndex(0);     // 初期シーンを設定
+  setSceneByIndex(0);
+
+  // 加速度センサー開始（iOS以外は即時、iOSはボタン待ち）
+  startAccelerometer();
 
   await fetchAndUpdate();                          // 初回即時取得
   pollTimer = setInterval(fetchAndUpdate, POLL_MS);
+}
+
+// ════════════════════════════════════════
+//  加速度センサー制御
+// ════════════════════════════════════════
+function startAccelerometer() {
+  if (!window.DeviceMotionEvent) return;
+
+  if (typeof DeviceMotionEvent.requestPermission === 'function') {
+    // iOS: パーミッションが必要 → ボタンを表示
+    document.getElementById('iosSensorBtn').style.display = 'block';
+  } else {
+    // Android / その他: 即時開始
+    window.addEventListener('devicemotion', onDeviceMotion, { passive: true });
+  }
+}
+
+async function requestIosSensor() {
+  try {
+    const perm = await DeviceMotionEvent.requestPermission();
+    if (perm === 'granted') {
+      window.addEventListener('devicemotion', onDeviceMotion, { passive: true });
+      document.getElementById('iosSensorBtn').style.display = 'none';
+    }
+  } catch (e) {
+    console.warn('iOS sensor permission denied:', e);
+  }
+}
+
+function onDeviceMotion(e) {
+  const acc = e.accelerationIncludingGravity;
+  if (!acc || acc.x == null) return;
+  if (detector.process({ x: acc.x, y: acc.y, z: acc.z })) {
+    sensorDelta++;
+    setSyncBadge('sensor');
+    applySteps(fitBase + sensorDelta);
+  }
 }
 
 // ════════════════════════════════════════
@@ -651,16 +789,40 @@ async function fetchAndUpdate() {
   setLoading(true);
   try {
     const steps = await fetchStepsToday();
-    processNewSteps(steps);
+    onFitData(steps);
   } catch (e) {
-    if (e.status === 401) {
-      // トークン期限切れ → 再認証
-      goToLogin();
-    }
+    if (e.status === 401) { goToLogin(); }
     console.error('Fit API error:', e);
   } finally {
     setLoading(false);
   }
+}
+
+// ────────────────────────────────────────
+//  Fit データ受信処理
+//  ・前回と同値 → stale（無効）扱い：センサーカウントはそのまま継続
+//  ・値が変化   → valid（有効）扱い：fitBase を上書き、sensorDelta リセット
+// ────────────────────────────────────────
+function onFitData(fitSteps) {
+  const now = new Date();
+  const timeStr = now.getHours().toString().padStart(2,'0') + ':' +
+                  now.getMinutes().toString().padStart(2,'0');
+
+  if (fitSteps === lastFitRaw) {
+    // ── 前回と同じ値 → Fitデータが古い（未反映） ──
+    document.getElementById('updateTime').textContent = timeStr + ' (Fit停滞)';
+    setSyncBadge('stale');
+    // sensorDelta の積み上げはそのまま継続（何もしない）
+    return;
+  }
+
+  // ── 値が変わった → 有効なFitデータ ──
+  lastFitRaw  = fitSteps;
+  fitBase     = fitSteps;
+  sensorDelta = 0;          // センサー加算分はFit正規値でリセット
+  document.getElementById('updateTime').textContent = timeStr + ' Fit確定';
+  setSyncBadge('fit');
+  applySteps(fitBase);
 }
 
 async function fetchStepsToday() {
@@ -677,10 +839,14 @@ async function fetchStepsToday() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        aggregateBy: [{
-          dataTypeName: 'com.google.step_count.delta',
-          dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps',
-        }],
+        aggregateBy: [
+          // estimated_steps（最速・推定値）
+          { dataTypeName: 'com.google.step_count.delta',
+            dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps' },
+          // merged（複数ソースを統合）
+          { dataTypeName: 'com.google.step_count.delta',
+            dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:merge_step_deltas' },
+        ],
         bucketByTime: { durationMillis: 86400000 },
         startTimeMillis: startOfDay.getTime(),
         endTimeMillis: now,
@@ -703,45 +869,52 @@ async function fetchStepsToday() {
 }
 
 // ════════════════════════════════════════
-//  歩数処理・マイルストーン検出
+//  統合歩数適用（Fit / センサー共通）
 // ════════════════════════════════════════
-function processNewSteps(newSteps) {
-  const prev = lastSteps < 0 ? newSteps : lastSteps;
-  currentSteps = newSteps;
+function applySteps(newTotal) {
+  const prev = currentSteps;
 
-  // 前回チェック時より増加していた場合、通過した100刻みを検索
-  if (newSteps > prev) {
+  // ── マイルストーン検出（増加時のみ） ──
+  if (newTotal > prev) {
     const prevH = Math.floor(prev / 100) * 100;
-    const currH = Math.floor(newSteps / 100) * 100;
+    const currH = Math.floor(newTotal / 100) * 100;
 
-    let bestType = null;  // 'tick' < 'milestone' < 'special'
+    let bestType = null;
     let bestStep = 0;
 
     for (let s = prevH + 100; s <= currH; s += 100) {
       const t = getMilestoneType(s);
-      if (t === 'special')                                   { bestType = 'special';   bestStep = s; break; }
-      if (t === 'milestone' && bestType !== 'special')       { bestType = 'milestone'; bestStep = s; }
-      if (t === 'tick'      && bestType == null)             { bestType = 'tick';      bestStep = s; }
+      if (t === 'special')                             { bestType = 'special';   bestStep = s; break; }
+      if (t === 'milestone' && bestType !== 'special') { bestType = 'milestone'; bestStep = s; }
+      if (t === 'tick'      && bestType == null)       { bestType = 'tick';      bestStep = s; }
     }
 
     if (bestType) {
       initAudioIfNeeded();
-      if      (bestType === 'special')   { playFanfare();   const sc = SCENES.find(s => s.threshold === bestStep); if (sc) showCelebration(sc); }
-      else if (bestType === 'milestone') { playMilestone(); const sc = SCENES.find(s => s.threshold === bestStep); if (sc) showCelebration(sc); }
-      else                               { playTick(); }
+      if (bestType === 'special') {
+        playFanfare();
+        const sc = SCENES.find(s => s.threshold === bestStep);
+        if (sc) showCelebration(sc);
+      } else if (bestType === 'milestone') {
+        playMilestone();
+        const sc = SCENES.find(s => s.threshold === bestStep);
+        if (sc) showCelebration(sc);
+      } else {
+        playTick();
+      }
     }
   }
+  // ← Fit が減少した場合はマイルストーン再発火なし。currentSteps を下書きするだけ。
 
-  // シーン更新
-  const newSceneIdx = getCurrentSceneIdx(newSteps);
+  // ── シーン更新 ──
+  const newSceneIdx = getCurrentSceneIdx(newTotal);
   if (newSceneIdx !== currentSceneIdx) {
     currentSceneIdx = newSceneIdx;
     setSceneByIndex(newSceneIdx);
   }
 
-  // UI更新
-  lastSteps = newSteps;
-  updateDisplay(newSteps);
+  currentSteps = newTotal;
+  updateDisplay(newTotal);
 }
 
 function getCurrentSceneIdx(steps) {
@@ -758,15 +931,12 @@ function getCurrentSceneIdx(steps) {
 function updateDisplay(steps) {
   document.getElementById('stepNumber').textContent = steps.toLocaleString('ja-JP');
 
-  // 次のマイルストーンを探す
   const milestones = [100,200,300,400,500,1000,1500,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000];
   const nextMs = milestones.find(m => m > steps) || null;
 
   if (nextMs) {
     const prevMs = milestones.slice().reverse().find(m => m <= steps) || 0;
-    const span   = nextMs - prevMs;
-    const done   = steps - prevMs;
-    const pct    = Math.min(100, (done / span) * 100);
+    const pct    = Math.min(100, ((steps - prevMs) / (nextMs - prevMs)) * 100);
     document.getElementById('progressFill').style.width = pct + '%';
     document.getElementById('progFrom').textContent = prevMs.toLocaleString('ja-JP');
     document.getElementById('progTo').textContent   = '次: ' + nextMs.toLocaleString('ja-JP') + '歩';
@@ -775,12 +945,20 @@ function updateDisplay(steps) {
     document.getElementById('progFrom').textContent = '';
     document.getElementById('progTo').textContent   = '🏆 目標達成！';
   }
+}
 
-  // 最終更新時刻
-  const now = new Date();
-  document.getElementById('updateTime').textContent =
-    now.getHours().toString().padStart(2,'0') + ':' +
-    now.getMinutes().toString().padStart(2,'0') + ' 更新';
+// ── 同期バッジ表示 ─────────────────────────
+const BADGE_LABELS = {
+  sensor: '📡 センサー',
+  fit:    '✅ Fit確定',
+  stale:  '⏳ Fit停滞中',
+};
+function setSyncBadge(type) {
+  const el = document.getElementById('syncBadge');
+  el.className = 'syncBadge ' + type; // remove old class
+  el.id = 'syncBadge';                // keep id
+  el.classList.add(type);
+  el.textContent = BADGE_LABELS[type] || '';
 }
 
 // ════════════════════════════════════════
