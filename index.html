@@ -931,12 +931,9 @@ async function fetchStepsToday() {
       },
       body: JSON.stringify({
         aggregateBy: [
-          // estimated_steps（最速・推定値）
+          // 1ソースのみ指定（複数指定すると合算されて2倍になるため）
           { dataTypeName: 'com.google.step_count.delta',
             dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps' },
-          // merged（複数ソースを統合）
-          { dataTypeName: 'com.google.step_count.delta',
-            dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:merge_step_deltas' },
         ],
         bucketByTime: { durationMillis: 86400000 },
         startTimeMillis: startOfDay.getTime(),
