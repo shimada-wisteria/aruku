@@ -814,10 +814,10 @@ async function startApp() {
   currentSceneIdx = initIdx;
   setSceneByIndex(initIdx);
 
-  // 加速度センサー開始（iOS以外は即時、iOSはボタン待ち）
-  startAccelerometer();
-
-  await fetchAndUpdate();                          // 初回即時取得
+  // Fit初回取得を先に完了させてからセンサー開始
+  // （先にセンサーを起動するとcurrentSteps=0の状態でマイルストーンが誤発火する）
+  await fetchAndUpdate();
+  startAccelerometer();                            // Fit値確定後にセンサー起動
   pollTimer = setInterval(fetchAndUpdate, POLL_MS);
 }
 
