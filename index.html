@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>あるく</title>
+<style>
+:root { --green: #4ade80; --gold: #facc15; --bg: #0a0520; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: #fff;
+  height: 100dvh;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Screens ─────────────────────────────── */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  transition: opacity 0.4s;
+  overflow-y: auto;
+}
+.screen.hidden { opacity: 0; pointer-events: none; }
+
+/* ── Setup / Login screens ───────────────── */
+#setupScreen, #loginScreen {
+  background: linear-gradient(160deg, #0a0520 0%, #1e1b4b 50%, #0f2027 100%);
+  gap: 18px;
+}
+.logo {
+  font-size: 52px;
+  font-weight: 900;
+  letter-spacing: -3px;
+  color: var(--green);
+  margin-bottom: 4px;
+}
+.tagline {
+  font-size: 14px;
+  color: #94a3b8;
+  text-align: center;
+  max-width: 300px;
+  line-height: 1.6;
+}
+.card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 20px;
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.card h3 { font-size: 15px; color: var(--green); }
+.card ol {
+  color: #cbd5e1;
+  font-size: 13px;
+  padding-left: 18px;
+  line-height: 2;
+}
+.card ol li strong { color: #e2e8f0; }
+.card ol li a { color: #60a5fa; text-decoration: none; }
+.card ol li a:hover { text-decoration: underline; }
+.hint {
+  font-size: 12px;
+  color: #60a5fa;
+  background: rgba(96,165,250,0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  line-height: 1.6;
+}
+input[type=text] {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input[type=text]:focus { border-color: var(--green); }
+input[type=text]::placeholder { color: rgba(255,255,255,0.25); }
+.btn {
+  padding: 14px 24px;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.2s;
+  width: 100%;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--green); color: #0a0520; }
+.btn-secondary {
+  background: none;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 400;
+  padding: 8px;
+}
+.error-msg {
+  color: #f87171;
+  font-size: 13px;
+  text-align: center;
+  min-height: 18px;
+}
+
+/* ── App screen ──────────────────────────── */
+#appScreen { padding: 0; }
+
+.scene-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 2s ease;
+}
+#sceneImgB { opacity: 0; }
+#sceneBg {
+  position: absolute;
+  inset: 0;
+  transition: background 1.5s ease;
+}
+
+/* Top bar */
+#topBar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 5;
+}
+#updateTime {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  background: rgba(0,0,0,0.35);
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+#settingsBtn {
+  background: rgba(0,0,0,0.4);
+  border: none;
+  color: rgba(255,255,255,0.75);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Bottom panel */
+#bottomPanel {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 24px 24px 44px;
+  background: linear-gradient(transparent 0%, rgba(0,0,0,0.65) 25%, rgba(0,0,0,0.88) 100%);
+  z-index: 5;
+}
+#sceneName {
+  font-size: 12px;
+  color: rgba(255,255,255,0.55);
+  text-align: center;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+#stepDisplay {
+  text-align: center;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+#stepNumber {
+  font-size: 96px;
+  font-weight: 900;
+  letter-spacing: -5px;
+  text-shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+#stepUnit {
+  font-size: 22px;
+  font-weight: 300;
+  color: rgba(255,255,255,0.65);
+  letter-spacing: 2px;
+  margin-left: 2px;
+}
+#progressBar {
+  height: 5px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 7px;
+}
+#progressFill {
+  height: 100%;
+  background: var(--green);
+  border-radius: 3px;
+  transition: width 1s ease;
+  width: 0%;
+  box-shadow: 0 0 10px rgba(74,222,128,0.6);
+}
+#progressLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+}
+
+/* ── Celebration overlay ──────────────────── */
+#celebration {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.62);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s;
+  z-index: 20;
+}
+#celebration.show { opacity: 1; pointer-events: auto; }
+#celebEmoji {
+  font-size: 72px;
+  animation: floatBounce 0.6s ease-in-out infinite alternate;
+  margin-bottom: 12px;
+}
+#celebTitle {
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, var(--green), var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 8px;
+}
+#celebSub {
+  font-size: 17px;
+  color: rgba(255,255,255,0.75);
+  text-align: center;
+  max-width: 260px;
+  line-height: 1.5;
+}
+#celebTap {
+  margin-top: 24px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.35);
+  letter-spacing: 1px;
+}
+
+@keyframes floatBounce {
+  from { transform: translateY(0) scale(1); }
+  to   { transform: translateY(-14px) scale(1.05); }
+}
+
+/* ── Particles ───────────────────────────── */
+.particle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: particleFly 1.4s ease-out forwards;
+  z-index: 15;
+}
+@keyframes particleFly {
+  0%   { opacity: 1; transform: translate(0,0) scale(1); }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.2); }
+}
+
+/* ── Loading indicator ───────────────────── */
+#loadingDot {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px; height: 8px;
+  background: var(--green);
+  border-radius: 50%;
+  opacity: 0;
+  z-index: 6;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+#loadingDot.active { opacity: 1; }
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; transform: translateX(-50%) scale(0.9); }
+  50%       { opacity: 1;   transform: translateX(-50%) scale(1.2); }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     SCREEN 1: Setup
+════════════════════════════════════════ -->
+<div class="screen" id="setupScreen">
+  <div class="logo">あるく</div>
+  <p class="tagline">Google Fit と連携して、<br>今日の歩みを感じよう。</p>
+
+  <div class="card">
+    <h3>🔧 Google Cloud Console の設定</h3>
+    <ol>
+      <li><a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> を開く</li>
+      <li>プロジェクトを作成（または選択）</li>
+      <li>「APIとサービス」→「ライブラリ」→ <strong>Fitness API</strong> を有効化</li>
+      <li>「認証情報を作成」→ <strong>OAuth 2.0 クライアントID</strong></li>
+      <li>種類：<strong>ウェブアプリケーション</strong></li>
+      <li>「承認済みJavaScriptオリジン」に下記を追加：</li>
+    </ol>
+    <div class="hint" id="originHint">（このページのURLを確認中…）</div>
+    <ol start="7">
+      <li>作成されたクライアントIDをコピー</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>🔑 クライアントIDを入力</h3>
+    <input type="text" id="clientIdInput" placeholder="xxxxxxxx.apps.googleusercontent.com">
+    <div class="error-msg" id="setupError"></div>
+    <button class="btn btn-primary" onclick="saveClientId()">保存して続ける →</button>
+  </div>
+
+  <div class="hint" style="max-width:440px">
+    💡 ローカルファイルで開く場合は <strong>python -m http.server 8000</strong> を実行して <strong>http://localhost:8000</strong> でアクセスしてください
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN 2: Login
+════════════════════════════════════════ -->
+<div class="screen hidden" id="loginScreen">
+  <div class="logo">あるく</div>
+  <p class="tagline">Google Fit のデータにアクセスして<br>今日の歩数をリアルタイムに表示します</p>
+  <div style="max-width:320px; width:100%; display:flex; flex-direction:column; gap:12px; margin-top:8px;">
+    <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">🚶 Google Fit でログイン</button>
+    <div class="error-msg" id="loginError"></div>
+    <button class="btn btn-secondary" onclick="goToSetup()">← クライアントID再設定</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN 3: App
+════════════════════════════════════════ -->
+<div class="screen hidden" id="appScreen">
+  <!-- AI Background (two layers for crossfade) -->
+  <div id="sceneBg"></div>
+  <img id="sceneImgA" class="scene-layer" src="" alt="">
+  <img id="sceneImgB" class="scene-layer" src="" alt="">
+
+  <!-- Top bar -->
+  <div id="topBar">
+    <div id="updateTime">−−:−−</div>
+    <button id="settingsBtn" onclick="goToLogin()" title="再ログイン / 設定">⚙</button>
+  </div>
+
+  <div id="loadingDot"></div>
+
+  <!-- Bottom panel -->
+  <div id="bottomPanel">
+    <div id="sceneName">旅の始まり</div>
+    <div id="stepDisplay">
+      <span id="stepNumber">0</span><span id="stepUnit">歩</span>
+    </div>
+    <div id="progressBar"><div id="progressFill"></div></div>
+    <div id="progressLabels">
+      <span id="progFrom">0</span>
+      <span id="progTo">次: 100歩</span>
+    </div>
+  </div>
+
+  <!-- Milestone celebration overlay -->
+  <div id="celebration" onclick="dismissCelebration()">
+    <div id="celebEmoji">🎉</div>
+    <div id="celebTitle">達成！</div>
+    <div id="celebSub">よく歩きました！</div>
+    <div id="celebTap">タップして閉じる</div>
+  </div>
+</div>
+
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script>
+'use strict';
+
+// ════════════════════════════════════════
+//  定数・設定
+// ════════════════════════════════════════
+const POLL_MS = 30_000; // 30秒ごとにポーリング
+const FITNESS_SCOPE = 'https://www.googleapis.com/auth/fitness.activity.read';
+
+// マイルストーン定義
+// type: 'tick'(100毎), 'milestone'(500毎), 'special'(3000/6000/10000)
+const SCENES = [
+  {
+    threshold: 0,
+    name: '旅の始まり',
+    emoji: '🌅',
+    msg: '今日も一歩ずつ。出発しよう！',
+    gradient: 'linear-gradient(to bottom, #0a0520 0%, #1a0533 35%, #c2410c 75%, #f59e0b 100%)',
+    prompt: 'japanese city at dawn, orange pink sunrise gradient sky, building silhouettes, atmospheric cinematic, painterly landscape, no text, no people, wide angle'
+  },
+  {
+    threshold: 500,
+    name: '公園の朝',
+    emoji: '🌸',
+    msg: '500歩！いいペースです！',
+    gradient: 'linear-gradient(to bottom, #0c4a6e 0%, #7dd3fc 40%, #bbf7d0 70%, #166534 100%)',
+    prompt: 'japanese park morning walking path, cherry blossom trees in bloom, golden morning light, atmospheric perspective, serene, beautiful painterly landscape, no text, no people'
+  },
+  {
+    threshold: 1000,
+    name: '木漏れ日の森',
+    emoji: '🌿',
+    msg: '1000歩！森の中へ踏み込んだ！',
+    gradient: 'linear-gradient(to bottom, #14532d 0%, #166534 30%, #15803d 60%, #4ade80 100%)',
+    prompt: 'japanese forest path komorebi sunlight through trees, green canopy, peaceful hiking trail, shafts of golden light, beautiful anime landscape style, no text, no people'
+  },
+  {
+    threshold: 2000,
+    name: '丘を越えて',
+    emoji: '⛰',
+    msg: '2000歩！視界が広がってきた！',
+    gradient: 'linear-gradient(to bottom, #1e3a5f 0%, #3b82f6 30%, #60a5fa 50%, #bbf7d0 80%, #166534 100%)',
+    prompt: 'rolling hills japanese countryside panorama, blue sky cumulus clouds, afternoon golden light, winding dirt path, beautiful scenic landscape, painterly, no text, no people'
+  },
+  {
+    threshold: 3000,
+    name: '古の森の奥へ',
+    emoji: '✨',
+    msg: '3000歩！素晴らしい！神秘の森へ！',
+    gradient: 'linear-gradient(to bottom, #052e16 0%, #14532d 35%, #4ade80 65%, #a7f3d0 100%)',
+    prompt: 'magical ancient deep forest japan, massive ancient cedar trees, ethereal golden green light filtering through canopy, mystical atmospheric, mossy ground, beautiful detailed, no text, no people'
+  },
+  {
+    threshold: 4000,
+    name: '高原の道',
+    emoji: '🍃',
+    msg: '4000歩！高原の風が気持ちいい！',
+    gradient: 'linear-gradient(to bottom, #1e3a5f 0%, #60a5fa 30%, #86efac 60%, #15803d 100%)',
+    prompt: 'japanese highland plateau meadow, wildflowers in summer, mountain backdrop, clear blue sky, panoramic scenic landscape, peaceful, painterly beautiful, no text, no people'
+  },
+  {
+    threshold: 5000,
+    name: '山の中腹',
+    emoji: '🏔',
+    msg: '5000歩！折り返し地点！ここからが本番！',
+    gradient: 'linear-gradient(to bottom, #0c1445 0%, #1e3a5f 30%, #6b7280 60%, #9ca3af 100%)',
+    prompt: 'japanese mountain trail midpoint, rocky alpine path, dramatic valley view far below, mountain peaks distant, hikers eye view, beautiful cinematic landscape, no text, no people'
+  },
+  {
+    threshold: 6000,
+    name: '稜線の向こうへ',
+    emoji: '🌤',
+    msg: '6000歩！圧巻の稜線！すごい！',
+    gradient: 'linear-gradient(to bottom, #0c1445 0%, #1d4ed8 20%, #3b82f6 45%, #93c5fd 70%, #e2e8f0 100%)',
+    prompt: 'dramatic mountain ridge line japan, epic deep blue sky, white clouds dramatic, alpine rocky terrain, sense of great height, cinematic wide angle, beautiful, no text, no people'
+  },
+  {
+    threshold: 7000,
+    name: '雲の王国',
+    emoji: '☁',
+    msg: '7000歩！雲の上の世界へようこそ！',
+    gradient: 'linear-gradient(to bottom, #1e3a5f 0%, #3b82f6 20%, #e0f2fe 50%, #f0f9ff 80%, #bfdbfe 100%)',
+    prompt: 'above the clouds mountain japan, majestic sea of clouds, mountain peaks emerging, golden hour light, breathtaking panoramic, beautiful, cinematic, no text, no people'
+  },
+  {
+    threshold: 8000,
+    name: '頂上はもうすぐ',
+    emoji: '🌟',
+    msg: '8000歩！山頂が見えてきた！',
+    gradient: 'linear-gradient(to bottom, #0c1445 0%, #1e3a5f 25%, #7c3aed 55%, #a78bfa 80%, #ddd6fe 100%)',
+    prompt: 'near mountain summit japan, final steep rocky approach, vast panorama below, dramatic purple twilight sky, stars beginning to appear, beautiful epic, no text, no people'
+  },
+  {
+    threshold: 9000,
+    name: 'もうすぐ山頂！',
+    emoji: '💪',
+    msg: '9000歩！あと少し！最後の力を！',
+    gradient: 'linear-gradient(to bottom, #0c1445 0%, #1e3a5f 20%, #7c3aed 40%, #f59e0b 70%, #fcd34d 100%)',
+    prompt: 'just steps from mountain summit japan, rocky final approach, golden sunset beginning, vast landscape below, determination, dramatic beautiful sky, no text, no people'
+  },
+  {
+    threshold: 10000,
+    name: '山頂 — 目標達成！',
+    emoji: '🏆',
+    msg: '1万歩達成！おめでとう！頂上から世界を見渡せ！',
+    gradient: 'linear-gradient(to bottom, #0c1445 0%, #7c3aed 20%, #f59e0b 45%, #fcd34d 65%, #fef3c7 100%)',
+    prompt: 'mountain summit japan victory moment, triumphant golden sunset panorama, spectacular 360 view, achievement atmosphere, beautiful epic dramatic sky with stars, no text, no people'
+  },
+];
+
+// 音が鳴るマイルストーン（step → type）
+function getMilestoneType(step) {
+  if ([3000, 6000, 10000].includes(step)) return 'special';
+  if (step % 500 === 0 && step > 0) return 'milestone';
+  if (step % 100 === 0 && step > 0) return 'tick';
+  return null;
+}
+
+// ════════════════════════════════════════
+//  状態
+// ════════════════════════════════════════
+let tokenClient = null;
+let accessToken  = null;
+let currentSteps = 0;
+let lastSteps    = -1;     // -1 = 初回
+let currentSceneIdx = 0;
+let activeImgLayer  = 'A'; // 'A' or 'B'
+let pollTimer  = null;
+let wakeLock   = null;
+let audioCtx   = null;
+let celebTimer = null;
+
+// 画像プリロードキャッシュ
+const imgCache = {};
+
+// ════════════════════════════════════════
+//  初期化
+// ════════════════════════════════════════
+window.addEventListener('load', () => {
+  // オリジン表示
+  const origin = location.origin || location.href.replace(/\/[^/]*$/, '');
+  document.getElementById('originHint').textContent =
+    `👉 ${origin}  または  http://localhost:8000`;
+
+  // クライアントIDが保存済みならログイン画面へ
+  if (getClientId()) {
+    showScreen('login');
+  } else {
+    showScreen('setup');
+  }
+
+  // 全シーン画像をバックグラウンドでプリロード開始
+  preloadImages();
+});
+
+// ════════════════════════════════════════
+//  ストレージ
+// ════════════════════════════════════════
+function getClientId() { return localStorage.getItem('aruku_cid') || ''; }
+function setClientId(id) { localStorage.setItem('aruku_cid', id.trim()); }
+
+// ════════════════════════════════════════
+//  画面遷移
+// ════════════════════════════════════════
+function showScreen(name) {
+  document.getElementById('setupScreen').classList.toggle('hidden', name !== 'setup');
+  document.getElementById('loginScreen').classList.toggle('hidden', name !== 'login');
+  document.getElementById('appScreen').classList.toggle('hidden', name !== 'app');
+}
+
+function goToSetup() { showScreen('setup'); }
+
+function goToLogin() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  releaseWakeLock();
+  showScreen('login');
+}
+
+// ════════════════════════════════════════
+//  Setup
+// ════════════════════════════════════════
+function saveClientId() {
+  const val = document.getElementById('clientIdInput').value.trim();
+  if (!val || !val.includes('.apps.googleusercontent.com')) {
+    document.getElementById('setupError').textContent =
+      'クライアントIDが正しくありません（xxxxx.apps.googleusercontent.com の形式）';
+    return;
+  }
+  setClientId(val);
+  document.getElementById('setupError').textContent = '';
+  showScreen('login');
+}
+
+// ════════════════════════════════════════
+//  Google OAuth
+// ════════════════════════════════════════
+function doLogin() {
+  const clientId = getClientId();
+  if (!clientId) { goToSetup(); return; }
+
+  document.getElementById('loginBtn').textContent = '認証中…';
+  document.getElementById('loginError').textContent = '';
+
+  // Google Identity Services が読み込まれるまで待機
+  if (typeof google === 'undefined' || !google.accounts) {
+    setTimeout(doLogin, 500);
+    return;
+  }
+
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: FITNESS_SCOPE,
+    callback: onTokenReceived,
+    error_callback: onAuthError,
+  });
+
+  tokenClient.requestAccessToken({ prompt: '' });
+}
+
+function onTokenReceived(resp) {
+  document.getElementById('loginBtn').textContent = '🚶 Google Fit でログイン';
+  if (resp.error) { onAuthError(resp); return; }
+  accessToken = resp.access_token;
+  startApp();
+}
+
+function onAuthError(err) {
+  document.getElementById('loginBtn').textContent = '🚶 Google Fit でログイン';
+  document.getElementById('loginError').textContent =
+    `認証エラー: ${err.error || '不明なエラー'} — クライアントIDとオリジン設定を確認してください`;
+}
+
+// ════════════════════════════════════════
+//  アプリ起動
+// ════════════════════════════════════════
+async function startApp() {
+  showScreen('app');
+  requestWakeLock();
+  setSceneByIndex(0);     // 初期シーンを設定
+
+  await fetchAndUpdate();                          // 初回即時取得
+  pollTimer = setInterval(fetchAndUpdate, POLL_MS);
+}
+
+// ════════════════════════════════════════
+//  Google Fit API
+// ════════════════════════════════════════
+async function fetchAndUpdate() {
+  setLoading(true);
+  try {
+    const steps = await fetchStepsToday();
+    processNewSteps(steps);
+  } catch (e) {
+    if (e.status === 401) {
+      // トークン期限切れ → 再認証
+      goToLogin();
+    }
+    console.error('Fit API error:', e);
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function fetchStepsToday() {
+  const now = Date.now();
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const res = await fetch(
+    'https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        aggregateBy: [{
+          dataTypeName: 'com.google.step_count.delta',
+          dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps',
+        }],
+        bucketByTime: { durationMillis: 86400000 },
+        startTimeMillis: startOfDay.getTime(),
+        endTimeMillis: now,
+      }),
+    }
+  );
+
+  if (!res.ok) { const err = new Error('API error'); err.status = res.status; throw err; }
+
+  const data = await res.json();
+  let total = 0;
+  (data.bucket || []).forEach(b =>
+    b.dataset.forEach(d =>
+      d.point.forEach(p => {
+        total += p.value[0]?.intVal ?? 0;
+      })
+    )
+  );
+  return total;
+}
+
+// ════════════════════════════════════════
+//  歩数処理・マイルストーン検出
+// ════════════════════════════════════════
+function processNewSteps(newSteps) {
+  const prev = lastSteps < 0 ? newSteps : lastSteps;
+  currentSteps = newSteps;
+
+  // 前回チェック時より増加していた場合、通過した100刻みを検索
+  if (newSteps > prev) {
+    const prevH = Math.floor(prev / 100) * 100;
+    const currH = Math.floor(newSteps / 100) * 100;
+
+    let bestType = null;  // 'tick' < 'milestone' < 'special'
+    let bestStep = 0;
+
+    for (let s = prevH + 100; s <= currH; s += 100) {
+      const t = getMilestoneType(s);
+      if (t === 'special')                                   { bestType = 'special';   bestStep = s; break; }
+      if (t === 'milestone' && bestType !== 'special')       { bestType = 'milestone'; bestStep = s; }
+      if (t === 'tick'      && bestType == null)             { bestType = 'tick';      bestStep = s; }
+    }
+
+    if (bestType) {
+      initAudioIfNeeded();
+      if      (bestType === 'special')   { playFanfare();   const sc = SCENES.find(s => s.threshold === bestStep); if (sc) showCelebration(sc); }
+      else if (bestType === 'milestone') { playMilestone(); const sc = SCENES.find(s => s.threshold === bestStep); if (sc) showCelebration(sc); }
+      else                               { playTick(); }
+    }
+  }
+
+  // シーン更新
+  const newSceneIdx = getCurrentSceneIdx(newSteps);
+  if (newSceneIdx !== currentSceneIdx) {
+    currentSceneIdx = newSceneIdx;
+    setSceneByIndex(newSceneIdx);
+  }
+
+  // UI更新
+  lastSteps = newSteps;
+  updateDisplay(newSteps);
+}
+
+function getCurrentSceneIdx(steps) {
+  let idx = 0;
+  for (let i = 0; i < SCENES.length; i++) {
+    if (steps >= SCENES[i].threshold) idx = i;
+  }
+  return idx;
+}
+
+// ════════════════════════════════════════
+//  UI更新
+// ════════════════════════════════════════
+function updateDisplay(steps) {
+  document.getElementById('stepNumber').textContent = steps.toLocaleString('ja-JP');
+
+  // 次のマイルストーンを探す
+  const milestones = [100,200,300,400,500,1000,1500,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000];
+  const nextMs = milestones.find(m => m > steps) || null;
+
+  if (nextMs) {
+    const prevMs = milestones.slice().reverse().find(m => m <= steps) || 0;
+    const span   = nextMs - prevMs;
+    const done   = steps - prevMs;
+    const pct    = Math.min(100, (done / span) * 100);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progFrom').textContent = prevMs.toLocaleString('ja-JP');
+    document.getElementById('progTo').textContent   = '次: ' + nextMs.toLocaleString('ja-JP') + '歩';
+  } else {
+    document.getElementById('progressFill').style.width = '100%';
+    document.getElementById('progFrom').textContent = '';
+    document.getElementById('progTo').textContent   = '🏆 目標達成！';
+  }
+
+  // 最終更新時刻
+  const now = new Date();
+  document.getElementById('updateTime').textContent =
+    now.getHours().toString().padStart(2,'0') + ':' +
+    now.getMinutes().toString().padStart(2,'0') + ' 更新';
+}
+
+// ════════════════════════════════════════
+//  シーン切り替え
+// ════════════════════════════════════════
+function setSceneByIndex(idx) {
+  const scene = SCENES[idx];
+  document.getElementById('sceneName').textContent = scene.name;
+
+  // グラデーション即時適用
+  document.getElementById('sceneBg').style.background = scene.gradient;
+
+  // 画像クロスフェード
+  const nextLayer = activeImgLayer === 'A' ? 'B' : 'A';
+  const activeEl  = document.getElementById('sceneImg' + activeImgLayer);
+  const nextEl    = document.getElementById('sceneImg' + nextLayer);
+
+  const url = getImgUrl(scene.prompt, idx);
+
+  if (imgCache[idx]) {
+    // キャッシュ済み → すぐにフェード
+    nextEl.src = imgCache[idx].src;
+    nextEl.style.opacity = '1';
+    setTimeout(() => { activeEl.style.opacity = '0'; }, 600);
+    activeImgLayer = nextLayer;
+  } else {
+    // 未ロード → ロード後にフェード
+    const img = new Image();
+    img.onload = () => {
+      imgCache[idx] = img;
+      nextEl.src = img.src;
+      nextEl.style.opacity = '1';
+      setTimeout(() => { activeEl.style.opacity = '0'; }, 600);
+      activeImgLayer = nextLayer;
+    };
+    img.onerror = () => { /* グラデーションのまま */ };
+    img.src = url;
+  }
+}
+
+function getImgUrl(prompt, seed) {
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=1000&nologo=true&seed=${seed * 37 + 11}`;
+}
+
+function preloadImages() {
+  SCENES.forEach((scene, idx) => {
+    if (imgCache[idx]) return;
+    const img = new Image();
+    img.onload = () => { imgCache[idx] = img; };
+    img.src = getImgUrl(scene.prompt, idx);
+  });
+}
+
+// ════════════════════════════════════════
+//  セレブレーション
+// ════════════════════════════════════════
+function showCelebration(scene) {
+  const el    = document.getElementById('celebration');
+  document.getElementById('celebEmoji').textContent = scene.emoji;
+  document.getElementById('celebTitle').textContent = scene.name;
+  document.getElementById('celebSub').textContent   = scene.msg;
+
+  el.classList.add('show');
+
+  // 特別マイルストーンはパーティクル
+  if ([3000, 6000, 10000].includes(scene.threshold)) spawnParticles();
+
+  // 5秒後に自動で閉じる
+  if (celebTimer) clearTimeout(celebTimer);
+  celebTimer = setTimeout(dismissCelebration, 5000);
+}
+
+function dismissCelebration() {
+  document.getElementById('celebration').classList.remove('show');
+  if (celebTimer) { clearTimeout(celebTimer); celebTimer = null; }
+}
+
+function spawnParticles() {
+  const colors = ['#4ade80','#facc15','#f472b6','#60a5fa','#fb923c','#a78bfa'];
+  const app    = document.getElementById('appScreen');
+  for (let i = 0; i < 40; i++) {
+    const p   = document.createElement('div');
+    p.className = 'particle';
+    const angle = Math.random() * 2 * Math.PI;
+    const dist  = 120 + Math.random() * 260;
+    p.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+    p.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
+    p.style.background  = colors[Math.floor(Math.random() * colors.length)];
+    p.style.left        = '50%';
+    p.style.top         = '42%';
+    p.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    p.style.animationDelay = `${Math.random() * 0.3}s`;
+    app.appendChild(p);
+    setTimeout(() => p.remove(), 1700);
+  }
+}
+
+// ════════════════════════════════════════
+//  Web Audio API — サウンド
+// ════════════════════════════════════════
+function initAudioIfNeeded() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function tone(freq, start, dur, gainPeak = 0.38, type = 'sine', detune = 0) {
+  const osc  = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = type;
+  osc.frequency.value = freq;
+  osc.detune.value    = detune;
+  gain.gain.setValueAtTime(0.001, start);
+  gain.gain.linearRampToValueAtTime(gainPeak, start + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+  osc.start(start);
+  osc.stop(start + dur + 0.05);
+}
+
+// ① 100歩刻み：澄んだベルの1音
+function playTick() {
+  const t = audioCtx.currentTime;
+  tone(1318.5, t, 0.55, 0.35);         // E6
+  tone(1318.5 * 2, t, 0.25, 0.08);     // E7 倍音
+}
+
+// ② 500刻みマイルストーン：C-E-G-C 上昇アルペジオ
+function playMilestone() {
+  const t = audioCtx.currentTime;
+  const run = [523.25, 659.25, 783.99, 1046.5];
+  run.forEach((f, i) => tone(f, t + i * 0.11, 0.65, 0.38));
+  // 最後に和音
+  [523.25, 659.25, 783.99].forEach(f => tone(f, t + 0.42, 1.2, 0.22));
+}
+
+// ③ 3000/6000/10000 ファンファーレ：勝利の和音 + 上昇メロディ
+function playFanfare() {
+  const t = audioCtx.currentTime;
+  // 上昇ラン
+  [392, 493.88, 523.25, 659.25, 783.99, 1046.5].forEach((f, i) =>
+    tone(f, t + i * 0.07, 0.35, 0.32));
+  // 和音
+  [523.25, 659.25, 783.99, 1046.5].forEach(f => tone(f, t + 0.48, 2.0, 0.28));
+  // わずかにデチューンして厚みを出す
+  [523.25, 659.25, 783.99].forEach(f => tone(f, t + 0.48, 2.0, 0.10, 'sine', 6));
+  // 高音スパークル
+  tone(2093, t + 0.52, 1.6, 0.20);
+  tone(2637, t + 0.72, 1.1, 0.13);
+  tone(3136, t + 1.0,  0.8, 0.09);
+}
+
+// ════════════════════════════════════════
+//  画面ロック（スリープ防止）
+// ════════════════════════════════════════
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch (_) {}
+}
+function releaseWakeLock() {
+  try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (_) {}
+}
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && !wakeLock) {
+    await requestWakeLock();
+  }
+});
+
+// ════════════════════════════════════════
+//  ローディング表示
+// ════════════════════════════════════════
+function setLoading(on) {
+  document.getElementById('loadingDot').classList.toggle('active', on);
+}
+</script>
+</body>
+</html>
